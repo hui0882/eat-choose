@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>每日食物决策助手</title>
+  <style>
+    body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 20px; }
+    h1 { text-align: center; }
+    form, .filter, .suggestion, table { margin-top: 20px; }
+    .filter-field { margin-bottom: 10px; }
+    fieldset { border: 1px solid #ccc; padding: 10px; border-radius: 4px; }
+    legend { padding: 0 5px; font-weight: bold; }
+    .checkbox-group label { display: inline-block; margin-right: 10px; }
+    table { width: 100%; border-collapse: collapse; }
+    table, th, td { border: 1px solid #ccc; }
+    th, td { padding: 8px; text-align: left; }
+    .btn { padding: 6px 12px; cursor: pointer; margin-right: 5px; }
+    .btn-primary { background-color: #007BFF; color: white; border: none; border-radius: 4px; }
+    .btn-secondary { background-color: #6C757D; color: white; border: none; border-radius: 4px; }
+    .btn-danger { background-color: #DC3545; color: white; border: none; border-radius: 4px; }
+    /* 突出展示风格 */
+    .featured { display: none; border: 2px solid #007BFF; background: #E9F7FF; padding: 15px; margin-top: 10px; border-radius: 6px; text-align: center; }
+    .featured h4 { margin: 0 0 5px; font-size: 20px; }
+    .featured p { margin: 0; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <h1>每日食物决策助手</h1>
+
+  <form id="food-form">
+    <h2>添加食物</h2>
+    <div class="filter-field"><label>类别: <input type="text" id="category" required></label></div>
+    <div class="filter-field"><label>名称: <input type="text" id="name" required></label></div>
+    <div class="filter-field"><label>价格(元): <input type="number" id="price" min="0" step="0.01" required></label></div>
+    <button type="submit" class="btn btn-primary">添加</button>
+  </form>
+
+  <div class="filter">
+    <h2>筛选与推荐</h2>
+    <div class="filter-field">
+      <label>包含类别: 
+        <select id="filter-category"><option value="">全部</option></select>
+      </label>
+    </div>
+    <fieldset class="filter-field">
+      <legend>排除类别（可多选）</legend>
+      <div id="exclude-container" class="checkbox-group"></div>
+    </fieldset>
+    <div class="filter-field"><label>最高价格(元): <input type="number" id="filter-price" min="0" step="0.01"></label></div>
+    <button id="filter-btn" class="btn btn-secondary">筛选</button>
+    <button id="suggest-btn" class="btn btn-primary">随机推荐</button>
+  </div>
+
+  <div class="suggestion">
+    <h3>推荐结果:</h3>
+    <div id="featured" class="featured">
+      <h4 id="featured-name"></h4>
+      <p id="featured-details"></p>
+    </div>
+    <p id="suggestion-text">暂无推荐</p>
+  </div>
+
+  <table id="food-table">
+    <thead>
+      <tr><th>类别</th><th>名称</th><th>价格(元)</th><th>操作</th></tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const STORAGE_KEY = 'foodItems';
+    let foodItems = [];
+
+    function saveToStorage() {
+      try { localStorage.setItem(STORAGE_KEY, JSON.stringify(foodItems)); }
+      catch (e) { console.error('保存失败:', e); alert('保存失败，请检查浏览器存储设置。'); }
+    }
+
+    function loadFromStorage() {
+      try { const data = localStorage.getItem(STORAGE_KEY); if (data) foodItems = JSON.parse(data); }
+      catch (e) { console.error('加载失败:', e); }
+    }
+
+    function renderCategoryFilter() {
+      const includeSelect = document.getElementById('filter-category');
+      const excludeDiv = document.getElementById('exclude-container');
+      const categories = [...new Set(foodItems.map(item => item.category))];
+      includeSelect.innerHTML = '<option value="">全部</option>';
+      excludeDiv.innerHTML = '';
+      categories.forEach(cat => {
+        const opt = document.createElement('option'); opt.value = cat; opt.textContent = cat; includeSelect.appendChild(opt);
+        const label = document.createElement('label');
+        label.innerHTML = `<input type="checkbox" value="${cat}" class="exclude-checkbox"> ${cat}`;
+        excludeDiv.appendChild(label);
+      });
+    }
+
+    function renderTable(items = foodItems) {
+      const tbody = document.querySelector('#food-table tbody'); tbody.innerHTML = '';
+      items.forEach((item, index) => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.category}</td>
+          <td>${item.name}</td>
+          <td>¥${parseFloat(item.price).toFixed(2)}</td>
+          <td><button class="btn btn-danger" onclick="deleteItem(${index})">删除</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function deleteItem(index) { foodItems.splice(index, 1); saveToStorage(); render(); }
+
+    function getFilteredItems() {
+      const includeCat = document.getElementById('filter-category').value;
+      const excluded = Array.from(document.querySelectorAll('.exclude-checkbox:checked')).map(cb => cb.value);
+      const maxPrice = document.getElementById('filter-price').value;
+      return foodItems.filter(item => (
+        (includeCat === '' || item.category === includeCat) &&
+        !excluded.includes(item.category) &&
+        (maxPrice === '' || parseFloat(item.price) <= parseFloat(maxPrice))
+      ));
+    }
+
+    function recommend() {
+      const filtered = getFilteredItems();
+      const featured = document.getElementById('featured');
+      const nameEl = document.getElementById('featured-name');
+      const detailsEl = document.getElementById('featured-details');
+      const textEl = document.getElementById('suggestion-text');
+      if (filtered.length === 0) {
+        featured.style.display = 'none'; textEl.textContent = '没有符合条件的食物';
+      } else {
+        const choice = filtered[Math.floor(Math.random() * filtered.length)];
+        nameEl.textContent = `${choice.name}`;
+        detailsEl.textContent = `类别：${choice.category}  •  价格：¥${parseFloat(choice.price).toFixed(2)}`;
+        textEl.textContent = '';
+        featured.style.display = 'block';
+      }
+    }
+
+    function render() { renderCategoryFilter(); renderTable(); document.getElementById('featured').style.display = 'none'; document.getElementById('suggestion-text').textContent = '暂无推荐'; }
+
+    document.getElementById('food-form').addEventListener('submit', e => {
+      e.preventDefault();
+      const item = { category: document.getElementById('category').value.trim(), name: document.getElementById('name').value.trim(), price: parseFloat(document.getElementById('price').value) };
+      foodItems.push(item); saveToStorage(); render(); e.target.reset();
+    });
+    document.getElementById('filter-btn').addEventListener('click', () => renderTable(getFilteredItems()));
+    document.getElementById('suggest-btn').addEventListener('click', recommend);
+
+    // 初始化
+    loadFromStorage(); render();
+  </script>
+</body>
+</html>
